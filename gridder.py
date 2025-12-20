@@ -1,4 +1,5 @@
 def grid_from_image(filename):
+    corrupt_pixels = []
     # get brightness of pixels (28x28)
     vzory = {
         (0,0,0): 0, # black - empty
@@ -15,6 +16,10 @@ def grid_from_image(filename):
             for x in range(28):
                 r, g, b = image.getpixel((x, y))
                 color_codes.append((r, g, b))
+                if (r, g, b) not in vzory.keys():
+                    corrupt_pixels.append((x, y, (r, g, b)))
+        if corrupt_pixels:
+            raise ValueError(f"Corrupt pixels found in level image '{filename}': {corrupt_pixels}")
         return color_codes
     # Example usage with PIL
     from PIL import Image
@@ -25,7 +30,7 @@ def grid_from_image(filename):
     return reshaped_values
 
 if __name__ == "__main__":
-    filename = "levels/lvlT.png"
+    filename = "levels/test2.lvl.png"
     grid = grid_from_image(filename)
     for row in grid:
         print(row)
