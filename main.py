@@ -62,7 +62,7 @@ current_level_grid = []
 exit_open = False
 
 
-LEVEL_ORDER = ("test.lvl.png",)
+LEVEL_ORDER = og_levels.copy()
 # test if all levels in LEVEL_ORDER exist in levels
 for lvl in LEVEL_ORDER:
     if lvl not in levels:
@@ -108,6 +108,7 @@ COLOR_MAPPING = {
     10: "RoyalBlue2",   # open entrance
 }
 current_level_grid = grid_from_image(os.path.join(LEVELS_FOLDER, LEVEL_ORDER[current_level_index]))
+on_start_coins = 20
 
 #endregion
 
@@ -163,8 +164,9 @@ separator = tk.Frame(ovladani, height=2, bd=1, relief="sunken", bg="black")
 separator.pack(fill="x", padx=5, pady=10)
 
 def load_level():
-    global current_level_index
+    global current_level_index, on_start_coins
     current_level_index = -1
+    on_start_coins = coins.get()
     # dialog window to select level
     """dialog = tk.Toplevel(app)
     dialog.title("Vyber úroveň")
@@ -229,11 +231,24 @@ def hp_change(amount):
             current_level_grid = grid_from_image(os.path.join(LEVELS_FOLDER, LEVEL_ORDER[current_level_index]))
             find_player_start()
             hp_player.set(100)
-            coins.set(20)
+            coins.set(on_start_coins)
             update()
         dialog = DialogWindow(app, "Konec hry", "OK", on_game_over_select, content_game_over)
     elif hp_player.get() > 100:
         hp_player.set(100)
+
+def load_next_level():
+    global current_level_index, current_level_grid, player_position, game_running, on_start_coins
+    current_level_index += 1
+    if current_level_index >= len(LEVEL_ORDER):
+        current_level_index = 0  # restart from first level
+    current_level_grid = grid_from_image(os.path.join(LEVELS_FOLDER, LEVEL_ORDER[current_level_index]))
+    player_position = [-1, -1]
+    find_player_start()
+    hp_player.set(100)
+    on_start_coins = coins.get()
+    game_running = True
+    update()
 
 def money_change(amount):
     global coins
@@ -281,6 +296,12 @@ def move_player(direction):
                 elif btn_wall_destroy.is_on:
                     current_level_grid[new_y][new_x] = 0  # remove wall permanently
                     money_change(-WALL_DESTROY_COST)
+            elif next_cell == 4 and enemies == []:  # exit
+                load_next_level()
+            # elif next_cell == 4 and enemies[0].hp <= 0.2 and player_abilities["exit_80_percent"]:
+            #     load_next_level()
+            # elif next_cell == 5:  # entrance (zrušeno, nebudu implementovat)
+
         draw_grid()
 
 app.bind("<Up>", lambda event: move_player("Up"))
