@@ -40,6 +40,7 @@ class DialogWindow(tk.Toplevel):
         self.grab_release()
         self.destroy()
 
+
 #region Level filnames
 levels: list[list[str, int]] = [] # list of [filename, completed]
 og_levels: list[str] = [] # original list of levels [filename]
@@ -86,10 +87,11 @@ def reset_player_abilities():
         "wall_destroy": False,
         "wall_pass": False,
         "exit_80_percent": False,
-        "entrance_unlimited": False,
+        # "entrance_unlimited": False, (zrušeno)
         "revive": False,
-        "fast_hp_recovery": False
+        "fast_hp_recovery": False # done
     }
+reset_player_abilities()
 
 WALL_MOVE_COST = 5  # coin cost to move through a wall (placing wall somewhere else)
 WALL_DESTROY_COST = 10  # coin cost to destroy a wall permanently
@@ -142,6 +144,8 @@ class ToggleButton(tk.Button):
         self.is_on = False
         self.config(bg="red", command=self.toggle)
     def toggle(self):
+        if self['state'] == 'disabled':
+            return
         if self.is_on:
             self.is_on = False
             self.config(bg="red")
@@ -203,11 +207,74 @@ btn_load_level.pack(pady=5)
 
 # endregion
 
+class AbilityLoot:
+    def __init__(self, x: int, y: int, loot_type: str = None):
+        self.x = x
+        self.y = y
+        if not loot_type:
+            try:
+                self.loot_type = rnd.choice(list(filter(lambda k: not player_abilities[k], list(player_abilities.keys()))))
+            except IndexError:
+                self.loot_type = None  # all abilities already collected
+                self.x, self.y = -1, -1  # remove from map
+                self.collected = True
+        else:
+            self.loot_type = loot_type  # type of ability
+            if not loot_type in player_abilities.keys():
+                raise ValueError(f"Invalid loot type: {loot_type}")
+        self.collected = False
+    def collect(self):
+        global player_abilities
+        if not self.collected:
+            player_abilities[self.loot_type] = True
+            self.collected = True
+            if self.loot_type == "wall_destroy":
+                btn_wall_destroy.config(state="normal")
+            elif self.loot_type == "wall_pass":
+                btn_wall_pass.config(state="normal")
+            def collected_content(parent):
+                lbl = tk.Label(parent, text=f"Získal jsi schopnost: {self.loot_type.replace('_', ' ').title()}", font=("Arial", 12), wraplength=250)
+                lbl.pack(pady=10)
+                return lbl
+            dialog = DialogWindow(app, "Schopnost získána!", "OK", None, collected_content)
+        self.x, self.y = -1, -1  # remove from map
+ability_loot = AbilityLoot(-1, -1)  # placeholder
+def find_ability_loot_start():
+    global ability_loot
+    for row in current_level_grid:
+        for cell in row:
+            if cell == 6:  # loot
+                ability_loot = AbilityLoot(row.index(cell), current_level_grid.index(row))
+                return
+    ability_loot = AbilityLoot(-1, -1)  # no loot found
+find_ability_loot_start()
+
 canvas = tk.Canvas(app, bg="black", highlightthickness=0)
 canvas.place(x=130, y=0, relheight=1, relwidth=1)
 
 player_position = [-1, -1]  # (x, y)
-enemies = []
+# enemies = []
+class Enemy:
+    def __init__(self, x: int, y: int, hp: float = 10.0):
+        self.x = x
+        self.y = y
+        self.hp = hp
+        self.alive = True if hp > 0 else False
+    def take_damage(self, amount: float):
+        self.hp -= amount
+        if self.hp <= 0:
+            self.hp = 0
+            self.die()
+    def die(self):
+        self.x, self.y = -1, -1  # remove from map
+        self.alive = False
+    def find_path(self):
+        pass
+enemy = Enemy(-1, -1, 0)  # dead placeholder
+def find_enemy_start():
+    pass
+find_enemy_start()
+
 # find player spawn position (value 5)
 ## code to find enemy spawn point (3)
 
@@ -245,6 +312,8 @@ def load_next_level():
     current_level_grid = grid_from_image(os.path.join(LEVELS_FOLDER, LEVEL_ORDER[current_level_index]))
     player_position = [-1, -1]
     find_player_start()
+    find_ability_loot_start()
+    find_enemy_start()
     hp_player.set(100)
     on_start_coins = coins.get()
     game_running = True
@@ -296,18 +365,27 @@ def move_player(direction):
                 elif btn_wall_destroy.is_on:
                     current_level_grid[new_y][new_x] = 0  # remove wall permanently
                     money_change(-WALL_DESTROY_COST)
-            elif next_cell == 4 and enemies == []:  # exit
+            elif next_cell == 4 and enemy.alive == False:  # exit
                 load_next_level()
+            elif next_cell == 6:  # loot
+                ability_loot.collect()
             # elif next_cell == 4 and enemies[0].hp <= 0.2 and player_abilities["exit_80_percent"]:
             #     load_next_level()
             # elif next_cell == 5:  # entrance (zrušeno, nebudu implementovat)
 
         draw_grid()
 
+# region Bindings
 app.bind("<Up>", lambda event: move_player("Up"))
 app.bind("<Down>", lambda event: move_player("Down"))
 app.bind("<Left>", lambda event: move_player("Left"))
 app.bind("<Right>", lambda event: move_player("Right"))
+
+app.bind("q", lambda event: btn_wall_move.toggle())
+app.bind("w", lambda event: btn_wall_destroy.toggle())
+app.bind("e", lambda event: btn_wall_pass.toggle())
+
+# endregion
 
 def find_player_start():
     global player_position
@@ -319,6 +397,8 @@ def find_player_start():
     if player_position == [-1, -1]:
         raise ValueError("No entrance point found in the level.")
 find_player_start()
+
+
 
 def draw_grid():
     canvas.delete("all")
@@ -350,12 +430,17 @@ def draw_grid():
             elif cell == 7:  # coin
                 pass # todo later
             elif cell == 6:  # loot
-                pass # todo later
+                if not ability_loot.collected:
+                    x1 = c_ind * CELL_SIZE + (CELL_SIZE - PLAYER_SIZE) // 2 + centered_offset_x
+                    y1 = r_ind * CELL_SIZE + (CELL_SIZE - PLAYER_SIZE) // 2 + centered_offset_y
+                    x2 = x1 + PLAYER_SIZE
+                    y2 = y1 + PLAYER_SIZE
+                    canvas.create_oval(x1,y1,x2,y2, fill="cyan", outline="")
     app.update_idletasks()
 
 def update():
     draw_grid()
-    hp_change(0.1)  # slowly recover HP
+    hp_change(0.1 + 0.1*player_abilities["fast_hp_recovery"])  # slowly recover HP + boost if ability is active
     if game_running:
         app.after(100, update)
 
