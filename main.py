@@ -82,13 +82,13 @@ player_abilities = {}
 def reset_player_abilities():
     global player_abilities
     player_abilities = {
-        "wall_cheap": False,
+        "wall_cheap": False, # done
         "slow_enemies": False,
-        "wall_destroy": False,
-        "wall_pass": False,
-        "exit_80_percent": False,
+        "wall_destroy": False, # done
+        "wall_pass": False, # done
+        "exit_80_percent": False, # done
         # "entrance_unlimited": False, (zrušeno)
-        "revive": False,
+        "revive": False, # done
         "fast_hp_recovery": False # done
     }
 reset_player_abilities()
@@ -111,6 +111,7 @@ COLOR_MAPPING = {
 }
 current_level_grid = grid_from_image(os.path.join(LEVELS_FOLDER, LEVEL_ORDER[current_level_index]))
 on_start_coins = 20
+revive_used = False
 
 #endregion
 
@@ -133,6 +134,17 @@ coin_label.pack(pady=5)
 coin_value = tk.Label(coin_frame, textvariable=coins, bg="gold", fg="black", font=("Arial", 12))
 coin_value.pack(pady=5)
 coin_frame.pack(pady=5)
+
+revive_used_label = tk.Label(ovladani, text="Revive: Neaktivní", bg="darkgrey", fg="black", font=("Arial", 10))
+revive_used_label.pack(pady=5)
+
+def update_revive_label():
+    if player_abilities["revive"] and not revive_used:
+        revive_used_label.config(text="Revive: Aktivní", fg="green", font=("Arial", 10, "bold"))
+    else:
+        revive_used_label.config(text="Revive: Neaktivní", fg="black", font=("Arial", 10))
+
+update_revive_label()
 
 # ovládací prvky
 toggle_buttons = []
@@ -162,6 +174,29 @@ btn_wall_destroy = ToggleButton(ovladani, text="Ničení zdi", state="disabled")
 btn_wall_destroy.pack(pady=5)
 btn_wall_pass = ToggleButton(ovladani, text="Procházení zdí", state="disabled")
 btn_wall_pass.pack(pady=5)
+
+# seznam abilit
+class AbilitiesList:
+    def __init__(self, master):
+        self.frame = tk.Frame(master, bg="lightgrey", width=120, height=235)
+        self.frame.pack_propagate(False)
+        # Hlavička
+        self.label = tk.Label(self.frame, text="Schopnosti", bg="lightgrey", fg="black", font=("Arial", 12))
+        self.label.pack(pady=5)
+        # Seznam schopností
+        self.ability_labels = {}
+        for ability in player_abilities.keys():
+            color = "green" if player_abilities[ability] else "red"
+            lbl = tk.Label(self.frame, text=f"{ability.replace('_', ' ').title()}", bg="lightgrey", fg=color, font=("Arial", 10), wraplength=100, justify="left")
+            lbl.pack(pady=2)
+            self.ability_labels[ability] = lbl
+        self.frame.pack(pady=5)
+    def update(self):
+        for ability, lbl in self.ability_labels.items():
+            color = "green" if player_abilities[ability] else "red"
+            lbl.config(fg=color)
+abilities_list = AbilitiesList(ovladani)
+
 
 # horizonální oddělovač
 separator = tk.Frame(ovladani, height=2, bd=1, relief="sunken", bg="black")
@@ -194,6 +229,10 @@ def load_level():
         if game_running:
             find_player_start()
             hp_player.set(100)
+            global revive_used
+            revive_used = False
+            # revive_used_label.config(text="Revive: Aktivní", fg="green", font=("Arial", 10, "bold"))
+            update_revive_label()
             update()
             # reset_player_abilities()
         # return focus to main window
@@ -228,10 +267,14 @@ class AbilityLoot:
         if not self.collected:
             player_abilities[self.loot_type] = True
             self.collected = True
+            abilities_list.update()
             if self.loot_type == "wall_destroy":
                 btn_wall_destroy.config(state="normal")
             elif self.loot_type == "wall_pass":
                 btn_wall_pass.config(state="normal")
+            elif self.loot_type == "revive":
+                # revive_used_label.config(text="Revive: Aktivní", fg="green", font=("Arial", 10, "bold"))
+                update_revive_label()
             def collected_content(parent):
                 lbl = tk.Label(parent, text=f"Získal jsi schopnost: {self.loot_type.replace('_', ' ').title()}", font=("Arial", 12), wraplength=250)
                 lbl.pack(pady=10)
@@ -280,9 +323,27 @@ find_enemy_start()
 
 # region Functions
 def hp_change(amount):
-    global hp_player
+    global hp_player, revive_used
     hp_player.set(round(hp_player.get() + amount, 1))
-    if hp_player.get() < 0:
+    if hp_player.get() <= 0:
+        if player_abilities["revive"] and not revive_used:
+            revive_used = True
+            # revive_used_label.config(text="Revive: Neaktivní", fg="black", font=("Arial", 10))
+            update_revive_label()
+            hp_player.set(50)  # revive with 50 HP
+            find_player_start()
+            global game_running
+            game_running = False
+            def content_revive(parent):
+                lbl = tk.Label(parent, text="Použil jsi revive!", font=("Arial", 14))
+                lbl.pack(pady=10)
+                return lbl
+            def on_revive_select(content_returns):
+                global game_running
+                game_running = True
+                update()
+            dialog = DialogWindow(app, "Revive!", "OK", on_revive_select, content_revive)
+            return
         hp_player.set(0)
         def content_game_over(parent):
             global game_running
@@ -305,7 +366,7 @@ def hp_change(amount):
         hp_player.set(100)
 
 def load_next_level():
-    global current_level_index, current_level_grid, player_position, game_running, on_start_coins
+    global current_level_index, current_level_grid, player_position, game_running, on_start_coins, revive_used
     current_level_index += 1
     if current_level_index >= len(LEVEL_ORDER):
         current_level_index = 0  # restart from first level
@@ -317,6 +378,9 @@ def load_next_level():
     hp_player.set(100)
     on_start_coins = coins.get()
     game_running = True
+    revive_used = False
+    # revive_used_label.config(text="Revive: Aktivní", fg="green", font=("Arial", 10, "bold"))
+    update_revive_label()
     update()
 
 def money_change(amount):
@@ -361,7 +425,7 @@ def move_player(direction):
                         if current_level_grid[new_wall_pos[1]][new_wall_pos[0]] != 0 or new_wall_pos == next_cell:
                             new_wall_pos = (-1,-1)
                         current_level_grid[new_wall_pos[1]][new_wall_pos[0]] = 1  # place wall
-                    money_change(-WALL_MOVE_COST)
+                    money_change(-WALL_MOVE_COST*(0.5 if player_abilities["wall_cheap"] else 1))
                 elif btn_wall_destroy.is_on:
                     current_level_grid[new_y][new_x] = 0  # remove wall permanently
                     money_change(-WALL_DESTROY_COST)
@@ -369,8 +433,8 @@ def move_player(direction):
                 load_next_level()
             elif next_cell == 6:  # loot
                 ability_loot.collect()
-            # elif next_cell == 4 and enemies[0].hp <= 0.2 and player_abilities["exit_80_percent"]:
-            #     load_next_level()
+            elif next_cell == 4 and enemy.hp <= 0.2 and player_abilities["exit_80_percent"]:
+                load_next_level()
             # elif next_cell == 5:  # entrance (zrušeno, nebudu implementovat)
 
         draw_grid()
