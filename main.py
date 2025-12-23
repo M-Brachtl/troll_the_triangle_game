@@ -105,7 +105,7 @@ COLOR_MAPPING = {
     4: "darkgreen",     # exit
     5: "RoyalBlue4",    # entrance
     # 6: "cyan",          # loot
-    7: "gold3",          # coin
+    # 7: "gold3",          # coin
     8: "lightgreen",    # open exit
     10: "RoyalBlue2",   # open entrance
 }
@@ -233,6 +233,7 @@ def load_level():
             revive_used = False
             # revive_used_label.config(text="Revive: Aktivní", fg="green", font=("Arial", 10, "bold"))
             update_revive_label()
+            generate_coins(5)
             update()
             # reset_player_abilities()
         # return focus to main window
@@ -321,6 +322,31 @@ find_enemy_start()
 # find player spawn position (value 5)
 ## code to find enemy spawn point (3)
 
+class Coin:
+    # class wide value of existing coins
+    existing_coins: list['Coin'] = []
+    def __init__(self, x: int, y: int, value: float = 1.0):
+        self.x = x
+        self.y = y
+        self.value = value
+        Coin.existing_coins.append(self)
+    def collect(self):
+        global coins
+        coins.set(coins.get() + self.value)
+        Coin.existing_coins.remove(self)
+        current_level_grid[self.y][self.x] = 0  # remove coin from grid
+        self.x, self.y = -1, -1  # remove from map
+
+def generate_coins(amount: int):
+    for _ in range(amount):
+        coin_pos = (-1, -1)
+        while coin_pos == (-1, -1):
+            coin_pos = (rnd.randint(0,COLUMN_COUNT-1), rnd.randint(0,ROW_COUNT-1)) # generate new coin position
+            if current_level_grid[coin_pos[1]][coin_pos[0]] != 0 or coin_pos == player_position or coin_pos == (ability_loot.x, ability_loot.y) or enemy.alive and coin_pos == (enemy.x, enemy.y):
+                coin_pos = (-1,-1)
+        current_level_grid[coin_pos[1]][coin_pos[0]] = 7  # place coin
+        Coin(coin_pos[0], coin_pos[1])
+
 # region Functions
 def hp_change(amount):
     global hp_player, revive_used
@@ -375,6 +401,7 @@ def load_next_level():
     find_player_start()
     find_ability_loot_start()
     find_enemy_start()
+    generate_coins(5)
     hp_player.set(100)
     on_start_coins = coins.get()
     game_running = True
@@ -435,6 +462,12 @@ def move_player(direction):
                 ability_loot.collect()
             elif next_cell == 4 and enemy.hp <= 0.2 and player_abilities["exit_80_percent"]:
                 load_next_level()
+            elif next_cell == 7:  # coin
+                # print(Coin.existing_coins)
+                for coin in Coin.existing_coins:
+                    if coin.x == new_x and coin.y == new_y:
+                        coin.collect()
+                        break
             # elif next_cell == 5:  # entrance (zrušeno, nebudu implementovat)
 
         draw_grid()
@@ -492,7 +525,11 @@ def draw_grid():
                 y2 = y1 + PLAYER_SIZE
                 canvas.create_rectangle(x1,y1,x2,y2, fill=PLAYER_COLOR, outline="")
             elif cell == 7:  # coin
-                pass # todo later
+                x1 = c_ind * CELL_SIZE + (CELL_SIZE - PLAYER_SIZE) // 2 + centered_offset_x
+                y1 = r_ind * CELL_SIZE + (CELL_SIZE - PLAYER_SIZE) // 2 + centered_offset_y
+                x2 = x1 + PLAYER_SIZE
+                y2 = y1 + PLAYER_SIZE
+                canvas.create_oval(x1,y1,x2,y2, fill="gold3", outline="")
             elif cell == 6:  # loot
                 if not ability_loot.collected:
                     x1 = c_ind * CELL_SIZE + (CELL_SIZE - PLAYER_SIZE) // 2 + centered_offset_x
@@ -509,7 +546,7 @@ def update():
         app.after(100, update)
 
 # endregion
-
+generate_coins(5)
 game_running = True
 app.after(100, update)
 app.mainloop()
