@@ -1,3 +1,4 @@
+from pathfinder import find_path
 from gridder import grid_from_image
 import tkinter as tk
 import random as rnd
@@ -86,7 +87,7 @@ def reset_player_abilities():
         "slow_enemies": False,
         "wall_destroy": False, # done
         "wall_pass": False, # done
-        "exit_80_percent": False, # done
+        "exit_75_percent": False, # done
         # "entrance_unlimited": False, (zrušeno)
         "revive": False, # done
         "fast_hp_recovery": False # done
@@ -96,6 +97,7 @@ reset_player_abilities()
 WALL_MOVE_COST = 5  # coin cost to move through a wall (placing wall somewhere else)
 WALL_DESTROY_COST = 10  # coin cost to destroy a wall permanently
 HP_COIN_RATIO = 2  # how many HP points per coin spent (when low on money)
+entrance = (-1, -1)
 
 COLOR_MAPPING = {
     0: "white",         # empty
@@ -228,12 +230,21 @@ def load_level():
         current_level_grid = grid_from_image(os.path.join(LEVELS_FOLDER, levels[listbox.curselection()[0]]))
         if game_running:
             find_player_start()
+            find_ability_loot_start()
+            find_enemy_start()
+            try:
+                LEVEL_ORDER.index(levels[listbox.curselection()[0]])
+                global current_level_index
+                current_level_index = LEVEL_ORDER.index(levels[listbox.curselection()[0]])
+            except ValueError:
+                current_level_index = -1  # level not in order list
             hp_player.set(100)
             global revive_used
             revive_used = False
             # revive_used_label.config(text="Revive: Aktivní", fg="green", font=("Arial", 10, "bold"))
             update_revive_label()
             generate_coins(5)
+            generate_damage_coins(3)
             update()
             # reset_player_abilities()
         # return focus to main window
@@ -244,6 +255,18 @@ def load_level():
 # game setup
 btn_load_level = tk.Button(ovladani, text="Načíst úroveň", command=load_level)
 btn_load_level.pack(pady=5)
+
+# pause the game
+def toggle_game_running():
+    global game_running
+    game_running = not game_running
+    if game_running:
+        update()
+    else:
+        print(enemy.x, enemy.y, enemy.find_path())
+
+btn_pause = tk.Button(ovladani, text="Pozastavit/Hrát", command=toggle_game_running)
+btn_pause.pack(pady=5)
 
 # endregion
 
@@ -280,7 +303,13 @@ class AbilityLoot:
                 lbl = tk.Label(parent, text=f"Získal jsi schopnost: {self.loot_type.replace('_', ' ').title()}", font=("Arial", 12), wraplength=250)
                 lbl.pack(pady=10)
                 return lbl
-            dialog = DialogWindow(app, "Schopnost získána!", "OK", None, collected_content)
+            global game_running
+            game_running = False
+            def on_loot_select(content_returns):
+                global game_running
+                game_running = True
+                update()
+            dialog = DialogWindow(app, "Schopnost získána!", "OK", on_loot_select, collected_content)
         self.x, self.y = -1, -1  # remove from map
 ability_loot = AbilityLoot(-1, -1)  # placeholder
 def find_ability_loot_start():
@@ -302,8 +331,12 @@ class Enemy:
     def __init__(self, x: int, y: int, hp: float = 10.0):
         self.x = x
         self.y = y
+        self.original_hp = hp
         self.hp = hp
         self.alive = True if hp > 0 else False
+        self.timeout = 1
+        app.after(1000, self.switch_timout())
+        self.debug_path_printed = False
     def take_damage(self, amount: float):
         self.hp -= amount
         if self.hp <= 0:
@@ -313,10 +346,37 @@ class Enemy:
         self.x, self.y = -1, -1  # remove from map
         self.alive = False
     def find_path(self):
-        pass
+        return find_path((self.x, self.y), tuple(player_position), current_level_grid)
+    def move_along_path(self):
+        if not self.alive or not game_running or self.timeout:
+            return
+        if player_abilities["slow_enemies"]:
+            if rnd.randint(0,1) == 0:
+                return  # 50% chance to skip move
+        path = self.find_path()
+        if not self.debug_path_printed:
+            print(path)
+            self.debug_path_printed = True
+        if len(path) > 1:
+            self.x, self.y = path[1]  # move to next step in path
+            if (self.x, self.y) == tuple(player_position):
+                self.take_damage(1.0)
+                hp_change(-10.0)  # player takes damage too
+                find_player_start()
+                self.switch_timout()
+                app.after(1000, self.switch_timout)
+        else:
+            pass
+    def switch_timout(self):
+        self.timeout = not self.timeout
 enemy = Enemy(-1, -1, 0)  # dead placeholder
 def find_enemy_start():
-    pass
+    for row in current_level_grid:
+        for cell in row:
+            if cell == 3:  # spawn
+                global enemy
+                enemy = Enemy(row.index(cell), current_level_grid.index(row), hp=20.0)
+                return
 find_enemy_start()
 
 # find player spawn position (value 5)
@@ -346,6 +406,34 @@ def generate_coins(amount: int):
                 coin_pos = (-1,-1)
         current_level_grid[coin_pos[1]][coin_pos[0]] = 7  # place coin
         Coin(coin_pos[0], coin_pos[1])
+
+class DamageCoin(Coin): # Coin, that deals damage to enemy
+    existing_coins: list['DamageCoin'] = []
+    def __init__(self, x: int, y: int, value: float = 1.0):
+        super().__init__(x, y, value)
+        DamageCoin.existing_coins.append(self)
+    def collect(self):
+        global enemy
+        if enemy.alive:
+            enemy.take_damage(5.0)
+        current_level_grid[self.y][self.x] = 0  # remove coin from grid
+        self.x, self.y = -1, -1  # remove from map
+        DamageCoin.existing_coins.remove(self)
+
+def generate_damage_coins(amount: int):
+    if not enemy.alive:
+        return
+    # mám to blbě, takže budeme tak trochu ignorovat amount a přepíšeme ho
+    # amount = enemy.hp // 5
+    amount = int(enemy.hp // 5)
+    for _ in range(amount):
+        coin_pos = (-1, -1)
+        while coin_pos == (-1, -1):
+            coin_pos = (rnd.randint(0,COLUMN_COUNT-1), rnd.randint(0,ROW_COUNT-1)) # generate new damage coin position
+            if current_level_grid[coin_pos[1]][coin_pos[0]] != 0 or coin_pos == player_position or coin_pos == (ability_loot.x, ability_loot.y) or coin_pos == (enemy.x, enemy.y):
+                coin_pos = (-1,-1)
+        current_level_grid[coin_pos[1]][coin_pos[0]] = 11  # place damage coin
+        DamageCoin(coin_pos[0], coin_pos[1])
 
 # region Functions
 def hp_change(amount):
@@ -384,6 +472,10 @@ def hp_change(amount):
             player_position = [-1, -1]
             current_level_grid = grid_from_image(os.path.join(LEVELS_FOLDER, LEVEL_ORDER[current_level_index]))
             find_player_start()
+            find_ability_loot_start()
+            find_enemy_start()
+            generate_coins(5)
+            generate_damage_coins(3)
             hp_player.set(100)
             coins.set(on_start_coins)
             update()
@@ -402,6 +494,7 @@ def load_next_level():
     find_ability_loot_start()
     find_enemy_start()
     generate_coins(5)
+    generate_damage_coins(3)
     hp_player.set(100)
     on_start_coins = coins.get()
     game_running = True
@@ -460,7 +553,7 @@ def move_player(direction):
                 load_next_level()
             elif next_cell == 6:  # loot
                 ability_loot.collect()
-            elif next_cell == 4 and enemy.hp <= 0.2 and player_abilities["exit_80_percent"]:
+            elif next_cell == 4 and enemy.hp <= 0.25*enemy.original_hp and player_abilities["exit_75_percent"]:
                 load_next_level()
             elif next_cell == 7:  # coin
                 # print(Coin.existing_coins)
@@ -468,6 +561,15 @@ def move_player(direction):
                     if coin.x == new_x and coin.y == new_y:
                         coin.collect()
                         break
+            elif next_cell == 11:  # damage coin
+                for dcoin in DamageCoin.existing_coins:
+                    if dcoin.x == new_x and dcoin.y == new_y:
+                        dcoin.collect()
+                        break
+            elif player_position == [enemy.x, enemy.y]:  # enemy
+                enemy.take_damage(1.0)
+                hp_change(-10.0)  # player takes damage too
+                find_player_start()
             # elif next_cell == 5:  # entrance (zrušeno, nebudu implementovat)
 
         draw_grid()
@@ -485,11 +587,12 @@ app.bind("e", lambda event: btn_wall_pass.toggle())
 # endregion
 
 def find_player_start():
-    global player_position
+    global player_position, entrance
     for row in current_level_grid:
         for cell in row:
             if cell == 5:  # entrance
                 player_position = [row.index(cell), current_level_grid.index(row)]  # (x, y)
+                entrance = (row.index(cell), current_level_grid.index(row))
                 break
     if player_position == [-1, -1]:
         raise ValueError("No entrance point found in the level.")
@@ -518,18 +621,32 @@ def draw_grid():
             canvas.create_rectangle(x1,y1,x2,y2, fill=color, outline="")
             
             # special draw system for player, coins, loot and enemies
-            if [c_ind, r_ind] == player_position:
+            if [c_ind, r_ind] == player_position: # player
                 x1 = c_ind * CELL_SIZE + (CELL_SIZE - PLAYER_SIZE) // 2 + centered_offset_x
                 y1 = r_ind * CELL_SIZE + (CELL_SIZE - PLAYER_SIZE) // 2 + centered_offset_y
                 x2 = x1 + PLAYER_SIZE
                 y2 = y1 + PLAYER_SIZE
                 canvas.create_rectangle(x1,y1,x2,y2, fill=PLAYER_COLOR, outline="")
+            elif enemy.alive and [c_ind, r_ind] == [enemy.x, enemy.y]: # enemy
+                x1 = c_ind * CELL_SIZE + (CELL_SIZE - ENEMY_SIZE) // 2 + centered_offset_x
+                y1 = r_ind * CELL_SIZE + (CELL_SIZE - ENEMY_SIZE) // 2 + centered_offset_y
+                x2 = x1 + ENEMY_SIZE
+                y2 = y1 + ENEMY_SIZE
+                canvas.create_polygon(x1,y2, (x1+x2)//2,y1, x2,y2, fill=ENEMY_COLOR, outline="")
+                # bealth number
+                canvas.create_text((x1+x2)//2, y1+ENEMY_SIZE//1.5, text=f"{int(enemy.hp)}", fill="white", font=("Arial", 8, "bold"))
             elif cell == 7:  # coin
                 x1 = c_ind * CELL_SIZE + (CELL_SIZE - PLAYER_SIZE) // 2 + centered_offset_x
                 y1 = r_ind * CELL_SIZE + (CELL_SIZE - PLAYER_SIZE) // 2 + centered_offset_y
                 x2 = x1 + PLAYER_SIZE
                 y2 = y1 + PLAYER_SIZE
                 canvas.create_oval(x1,y1,x2,y2, fill="gold3", outline="")
+            elif cell == 11:  # damage coin
+                x1 = c_ind * CELL_SIZE + (CELL_SIZE - PLAYER_SIZE) // 2 + centered_offset_x
+                y1 = r_ind * CELL_SIZE + (CELL_SIZE - PLAYER_SIZE) // 2 + centered_offset_y
+                x2 = x1 + PLAYER_SIZE
+                y2 = y1 + PLAYER_SIZE
+                canvas.create_oval(x1,y1,x2,y2, fill="red", outline="")
             elif cell == 6:  # loot
                 if not ability_loot.collected:
                     x1 = c_ind * CELL_SIZE + (CELL_SIZE - PLAYER_SIZE) // 2 + centered_offset_x
@@ -541,12 +658,15 @@ def draw_grid():
 
 def update():
     draw_grid()
-    hp_change(0.1 + 0.1*player_abilities["fast_hp_recovery"])  # slowly recover HP + boost if ability is active
+    if player_position != list(entrance):
+        hp_change(0.1 + 0.1*player_abilities["fast_hp_recovery"])  # slowly recover HP + boost if ability is active
+    enemy.move_along_path()
     if game_running:
         app.after(100, update)
 
 # endregion
 generate_coins(5)
+generate_damage_coins(3)
 game_running = True
 app.after(100, update)
 app.mainloop()
