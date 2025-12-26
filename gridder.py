@@ -30,7 +30,7 @@ def grid_from_image(filename):
     return reshaped_values
 
 if __name__ == "__main__":
-    filename = "levels/test2.lvl.png"
+    filename = "levels/0.lvl.png"
     grid = grid_from_image(filename)
     for row in grid:
         print(row)

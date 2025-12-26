@@ -262,8 +262,8 @@ def toggle_game_running():
     game_running = not game_running
     if game_running:
         update()
-    else:
-        print(enemy.x, enemy.y, enemy.find_path())
+    # else:
+    #     print(enemy.x, enemy.y, enemy.find_path())
 
 btn_pause = tk.Button(ovladani, text="Pozastavit/Hrát", command=toggle_game_running)
 btn_pause.pack(pady=5)
@@ -308,6 +308,7 @@ class AbilityLoot:
             def on_loot_select(content_returns):
                 global game_running
                 game_running = True
+                current_level_grid[self.y][self.x] = 0  # remove loot from grid (so enemy can go here)
                 update()
             dialog = DialogWindow(app, "Schopnost získána!", "OK", on_loot_select, collected_content)
         self.x, self.y = -1, -1  # remove from map
@@ -336,7 +337,7 @@ class Enemy:
         self.alive = True if hp > 0 else False
         self.timeout = 1
         app.after(1000, self.switch_timout())
-        self.debug_path_printed = False
+        # self.debug_path_printed = False
     def take_damage(self, amount: float):
         self.hp -= amount
         if self.hp <= 0:
@@ -354,9 +355,9 @@ class Enemy:
             if rnd.randint(0,1) == 0:
                 return  # 50% chance to skip move
         path = self.find_path()
-        if not self.debug_path_printed:
-            print(path)
-            self.debug_path_printed = True
+        # if not self.debug_path_printed:
+        #     print(path)
+        #     self.debug_path_printed = True
         if len(path) > 1:
             self.x, self.y = path[1]  # move to next step in path
             if (self.x, self.y) == tuple(player_position):
