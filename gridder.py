@@ -9,6 +9,7 @@ def grid_from_image(filename):
         (0,0,255): 4, # blue - exit
         (255,255,0): 5, # yellow - entrance
         (0,255,255): 6, # cyan - loot
+        (255,0,255): 12, # magenta - empty but no coins are allowed
     }
     def get_color_code(image):
         color_codes = []
@@ -30,7 +31,7 @@ def grid_from_image(filename):
     return reshaped_values
 
 if __name__ == "__main__":
-    filename = "levels/0.lvl.png"
+    filename = "levels/5.lvl.png"
     grid = grid_from_image(filename)
     for row in grid:
         print(row)

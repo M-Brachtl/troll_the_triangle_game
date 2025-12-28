@@ -92,7 +92,11 @@ def reset_player_abilities():
         "revive": False, # done
         "fast_hp_recovery": False # done
     }
+    ## debug::
+    # for key in player_abilities.keys():
+    #     player_abilities[key] = True
 reset_player_abilities()
+
 
 WALL_MOVE_COST = 5  # coin cost to move through a wall (placing wall somewhere else)
 WALL_DESTROY_COST = 10  # coin cost to destroy a wall permanently
@@ -110,6 +114,7 @@ COLOR_MAPPING = {
     # 7: "gold3",          # coin
     8: "lightgreen",    # open exit
     10: "RoyalBlue2",   # open entrance
+    12: "white",   # empty but no coins allowed
 }
 current_level_grid = grid_from_image(os.path.join(LEVELS_FOLDER, LEVEL_ORDER[current_level_index]))
 on_start_coins = 20
@@ -277,15 +282,22 @@ class AbilityLoot:
         if not loot_type:
             try:
                 self.loot_type = rnd.choice(list(filter(lambda k: not player_abilities[k], list(player_abilities.keys()))))
+                # print(f"Generated loot type: {self.loot_type}")
             except IndexError:
+                global current_level_grid
                 self.loot_type = None  # all abilities already collected
+                current_level_grid[self.y][self.x] = 0
                 self.x, self.y = -1, -1  # remove from map
                 self.collected = True
+                return
         else:
             self.loot_type = loot_type  # type of ability
             if not loot_type in player_abilities.keys():
                 raise ValueError(f"Invalid loot type: {loot_type}")
         self.collected = False
+        # if True not in player_abilities.values():
+        #     self.collected = True  # all abilities already collected
+        #     self.x, self.y = -1, -1  # remove from map
     def collect(self):
         global player_abilities
         if not self.collected:
@@ -309,9 +321,9 @@ class AbilityLoot:
                 global game_running
                 game_running = True
                 current_level_grid[self.y][self.x] = 0  # remove loot from grid (so enemy can go here)
+                self.x, self.y = -1, -1  # remove from map
                 update()
             dialog = DialogWindow(app, "Schopnost získána!", "OK", on_loot_select, collected_content)
-        self.x, self.y = -1, -1  # remove from map
 ability_loot = AbilityLoot(-1, -1)  # placeholder
 def find_ability_loot_start():
     global ability_loot
@@ -405,6 +417,9 @@ def generate_coins(amount: int):
             coin_pos = (rnd.randint(0,COLUMN_COUNT-1), rnd.randint(0,ROW_COUNT-1)) # generate new coin position
             if current_level_grid[coin_pos[1]][coin_pos[0]] != 0 or coin_pos == player_position or coin_pos == (ability_loot.x, ability_loot.y) or enemy.alive and coin_pos == (enemy.x, enemy.y):
                 coin_pos = (-1,-1)
+            # check if valid position for a coin exists to prevent infinite loop
+            if all(current_level_grid[row][column] != 0 for row in range(ROW_COUNT) for column in range(COLUMN_COUNT)):
+                return # end the function (this is a valid situation)
         current_level_grid[coin_pos[1]][coin_pos[0]] = 7  # place coin
         Coin(coin_pos[0], coin_pos[1])
 

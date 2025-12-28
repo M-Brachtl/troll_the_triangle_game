@@ -43,6 +43,7 @@ Levely jsou vytvářeny jako obrázky 28x28 pixelů, kde každý pixel reprezent
 - Modrá (0,0,255): Výstup z levelu (ve hře tmavě zelená)
 - Žlutá (255,255,0): Vstup do levelu (ve hře světle modrá)
 - Azurová (0,255,255): Loot  
+- Magenta (255,0,255): Prázdný čtverec bez možnosti mincí  
 
 Pro vytvoření vlastního levelu můžete použít jakýkoliv grafický editor, který umožňuje přesné nastavení barev pixelů. Po vytvoření obrázku jej uložte do složky `levels` ve formátu PNG a ujistěte se, že má rozměry 28x28 pixelů. Název souboru pak použijte při načítání levelu ve hře. Bitová hloubka obrázku by měla být 24-bitová (True Color), aby byly barvy správně rozpoznány.  
 Mapa musí mít vstup a výstup, pro správné fungování hry. Spawner nepřítele je volitelný.

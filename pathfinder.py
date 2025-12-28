@@ -31,7 +31,7 @@ def find_path(start, goal, grid):
         while len(neighbours) > 0:
             next_cell = r_choice(neighbours) # náhodné, pro promělivější chování Enemy
             neighbours.remove(next_cell)
-            if 0 <= next_cell[0] < ROWS and 0 <= next_cell[1] < COLUMNS and next_cell not in visited and grid[next_cell[1]][next_cell[0]] in (0, 7, 11):
+            if 0 <= next_cell[0] < ROWS and 0 <= next_cell[1] < COLUMNS and next_cell not in visited and grid[next_cell[1]][next_cell[0]] in (0, 7, 11, 12):
                 queue.put(next_cell)
                 visited.add(next_cell)
                 came_from[next_cell] = current
